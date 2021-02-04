@@ -1,7 +1,7 @@
 import re
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -15,13 +15,9 @@ URL_BASE_1 = f"C:\\Users\\{WIN_USER}\\AppData\\Local\\Temp\\"
 URL_BASE_2 = "\\user\\Local Storage\\https_gemstore-fra-live.ncplatform.net_0.localstorage"
 PATH = URL_BASE_1 + FOLDER_NAME + URL_BASE_2
 
-new_names = [
-  "Noble Aurochs Jackal Skin",
-  "Hammer of the Three Realms Skin",
-  "Infused Samurai Package",
-  "Infused Blades Package",
-  "Infused Samurai Outfit",
-  ]
+# Set to False if you don't want to "smart" guess new items
+CHECK_WIKI = True
+new_names = []
 
 
 def get_catalog_url():
@@ -48,6 +44,23 @@ def get_local_gemstore_data():
     c = conn.cursor()
     c.execute("SELECT cast(value as varchar) FROM ItemTable")  # cast because data is in hex
     return c.fetchall()  # list of tuples of strings
+
+
+def check_wiki(name, today):
+    # Check if a wiki page was made less than ~3 days before 'today'
+    # Query must be done one at a time because generator rvdir can only take 1 page
+    buffer = today - timedelta(days=3)
+    print('Checking wiki for: ' + name)
+    wiki_url = "https://wiki.guildwars2.com/api.php?action=query&prop=revisions%7Cinfo&rvprop=timestamp&rvdir=newer" \
+               "&rvlimit=1&format=json&titles=" + name
+    r = requests.get(wiki_url)
+    pages = r.json()['query']['pages']
+    if 'missing' in pages[list(pages)[0]].keys():
+        # Page does not yet exist
+        return True
+    t = pages[list(pages)[0]]['revisions'][0]['timestamp']
+
+    return to_datetime(t) > buffer
 
 
 data = get_local_gemstore_data()
@@ -83,6 +96,11 @@ for item in new_items:
     if "end" in item.keys():
         end = to_datetime(item["end"]).strftime("%d %b")
     new_formatted_items.append((name, start, end))
+
+    if CHECK_WIKI is True:
+        if check_wiki(name, TODAY) is True:
+            new_names.append(name)
+            print('Appended ' + name)
 
 print("|name|start|end|")
 print("|:-|:-:|:-:|")
